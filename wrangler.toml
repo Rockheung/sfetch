@@ -1,7 +1,12 @@
 #:schema node_modules/wrangler/config-schema.json
 name = "sfetch"
 main = "src/index.ts"
+compatibility_flags = ["nodejs_compat"]
 compatibility_date = "2024-06-05"
+
+[[kv_namespaces]]
+binding = "fetch_jar"
+id = "5ee62f73cf7f415dbea459002eaba352"
 
 # Automatically place your workloads in an optimal location to minimize latency.
 # If you are running back-end logic in a Worker, running it closer to your back-end infrastructure
