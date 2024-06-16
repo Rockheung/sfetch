@@ -12,6 +12,8 @@
  */
 
 import axios, { Axios, AxiosHeaders, AxiosPromise, AxiosRequestConfig, AxiosResponse, InternalAxiosRequestConfig } from 'axios';
+import { CookieJar } from 'tough-cookie';
+import { parse } from 'cookie';
 
 type Serializable = string | number | boolean | null | undefined | Serializable[] | { [key: string]: Serializable };
 
@@ -28,7 +30,7 @@ const convertAxiosHeaderToHeaders = (headers: AxiosHeaders): Headers => {
 						break;
 					case 'object':
 						if (Array.isArray(value)) {
-							value.forEach(v => headers.append(key, v));
+							value.forEach((v) => headers.append(key, v));
 						}
 						break;
 				}
@@ -36,7 +38,7 @@ const convertAxiosHeaderToHeaders = (headers: AxiosHeaders): Headers => {
 		}
 	}
 	return headersObj;
-}
+};
 
 const convertHeadersToAxiosHeaders = (headers: Headers): AxiosHeaders => {
 	const headersObj = new AxiosHeaders();
@@ -49,7 +51,7 @@ const convertHeadersToAxiosHeaders = (headers: Headers): AxiosHeaders => {
 		headersObj.set(key, value);
 	}
 	return headersObj;
-}
+};
 
 const fetchAdapter = async (config: InternalAxiosRequestConfig): Promise<AxiosResponse> => {
 	const request = new Request(config.url!, {
@@ -66,42 +68,65 @@ const fetchAdapter = async (config: InternalAxiosRequestConfig): Promise<AxiosRe
 		statusText: res.statusText,
 		headers: convertHeadersToAxiosHeaders(res.headers),
 		config,
-	}
-}
+	};
+};
 
 const iAxios = axios.create({
 	adapter: fetchAdapter,
 	maxRedirects: 0,
 	withCredentials: true,
-	validateStatus: _ => true,
-	transformRequest: _ => _,
-	transformResponse: _ => _,
+	validateStatus: (_) => true,
+	transformRequest: (_) => _,
+	transformResponse: (_) => _,
 });
-
 
 // Export a default object containing event handlers
 export default {
 	async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+		const cookie = parse(request.headers.get('cookie') ?? '');
+		console.log(`🚀 ~ fetch ~ cookie:`, cookie);
 		const url = request.headers.get('x-sfetch-url') || '';
-		if (!url || !url.startsWith('http://') && !url.startsWith('https://')) {
+		if (!url || (!url.startsWith('http://') && !url.startsWith('https://'))) {
 			return new Response('Invalid URL', {
 				status: 400,
 			});
 		}
 
-		const responseHeaders = new Headers();
+		const requestHeaders = new Headers();
 		request.headers.forEach((value, key) => {
 			if (!key.startsWith('x-sfetch-')) {
-				responseHeaders.set(key, value);
+				requestHeaders.set(key, value);
 			}
 		});
 
 		const requestRevealed = new Request(url, {
 			method: request.method,
-			headers: responseHeaders,
+			headers: requestHeaders,
 			body: request.body,
 		});
-		return fetch(requestRevealed);
+		const res = await fetch(requestRevealed);
+
+		const responseHeaders = new Headers();
+		res.headers.forEach((value, key) => {
+			responseHeaders.set(key, value);
+		});
+		responseHeaders.set(
+			'x-sfetch-debug',
+			encodeURIComponent(
+				JSON.stringify({
+					cookie,
+					url,
+				})
+			)
+		);
+
+		const response = new Response(res.body, {
+			status: res.status,
+			statusText: res.statusText,
+			headers: responseHeaders,
+		});
+
+		return response;
 	},
 	// The fetch handler is invoked when this worker receives a HTTP(S) request
 	// and should return a Response (optionally wrapped in a Promise)
@@ -109,7 +134,7 @@ export default {
 		try {
 			const requestConfig = await request.json<AxiosRequestConfig>();
 			const res = await iAxios.request(requestConfig);
-			console.log(typeof res.headers['set-cookie'])
+			console.log(typeof res.headers['set-cookie']);
 			const headers = new Headers();
 			if (typeof res.headers.toJSON === 'function') {
 				const headersObj = res.headers.toJSON();
@@ -122,31 +147,30 @@ export default {
 								break;
 							case 'object':
 								if (Array.isArray(value)) {
-									value.forEach(v => headers.append(key, v));
+									value.forEach((v) => headers.append(key, v));
 								}
 								break;
 						}
 					}
 				}
 			} else {
-
 			}
 			headers.set('X-From-sfetch', res.headers['content-type']);
-      return new Response(res.data, {
+			return new Response(res.data, {
 				statusText: res.statusText,
 				status: res.status,
 				headers,
 			});
-    } catch (error) {
+		} catch (error) {
 			if (error instanceof Error) {
-				return new Response(error.stack,{
-					status: 400
+				return new Response(error.stack, {
+					status: 400,
 				});
 			}
 
-			return new Response('An unknown error occurred',{
-				status: 500
+			return new Response('An unknown error occurred', {
+				status: 500,
 			});
-    }
-	}
+		}
+	},
 };
