@@ -79,19 +79,33 @@ const iAxios = axios.create({
 });
 
 
-
-
-// import handleProxy from './proxy';
-// import handleRedirect from './redirect';
-// import apiRouter from './router';
-
-// nTitleNo=126410663&nApiLevel=10&nPlaylistIdx=0
-
 // Export a default object containing event handlers
 export default {
+	async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+		const url = request.headers.get('x-sfetch-url') || '';
+		if (!url || !url.startsWith('http://') && !url.startsWith('https://')) {
+			return new Response('Invalid URL', {
+				status: 400,
+			});
+		}
+
+		const responseHeaders = new Headers();
+		request.headers.forEach((value, key) => {
+			if (!key.startsWith('x-sfetch-')) {
+				responseHeaders.set(key, value);
+			}
+		});
+
+		const requestRevealed = new Request(url, {
+			method: request.method,
+			headers: responseHeaders,
+			body: request.body,
+		});
+		return fetch(requestRevealed);
+	},
 	// The fetch handler is invoked when this worker receives a HTTP(S) request
 	// and should return a Response (optionally wrapped in a Promise)
-	async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+	async _fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
 		try {
 			const requestConfig = await request.json<AxiosRequestConfig>();
 			const res = await iAxios.request(requestConfig);
@@ -117,7 +131,7 @@ export default {
 			} else {
 
 			}
-			headers.set('X-From-Saxios', res.headers['content-type']);
+			headers.set('X-From-sfetch', res.headers['content-type']);
       return new Response(res.data, {
 				statusText: res.statusText,
 				status: res.status,
